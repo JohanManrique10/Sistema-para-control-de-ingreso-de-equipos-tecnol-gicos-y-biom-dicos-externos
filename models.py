@@ -126,7 +126,7 @@ class UserDeletion(Base):
     )
 
 
-# ================== NUEVAS TABLAS: EMPRESA + RESPONSABLE ================== #
+#
 
 class EmpresaExterna(Base):
     __tablename__ = "empresas_externas"
@@ -176,6 +176,42 @@ class EmpresaDeletion(Base):
     empresa_id = Column(Integer, index=True)  # original empresa id (snapshot)
     identificacion = Column(String(50))
     nombre = Column(String(150))
+
+    actor_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    ip = Column(String(45))
+    user_agent = Column(String(255))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    actor = relationship("User", passive_deletes=True)
+
+
+class ResponsableAudit(Base):
+    __tablename__ = "responsable_audit"
+
+    id = Column(Integer, primary_key=True)
+    responsable_id = Column(Integer, ForeignKey("responsables_entrega.id", ondelete="CASCADE"), nullable=False)
+    actor_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    action = Column(String(50), nullable=False)
+    detail = Column(Text, nullable=True)
+    ip = Column(String(45), nullable=True)
+    user_agent = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    responsable = relationship("ResponsableEntrega", backref=backref("audits", passive_deletes=True))
+    actor = relationship("User", backref="responsable_audits", foreign_keys=[actor_user_id])
+
+
+class ResponsableDeletion(Base):
+    __tablename__ = "responsables_deletions"
+
+    id = Column(Integer, primary_key=True)
+    responsable_id = Column(Integer, index=True)
+    id_responsable = Column(String(50))
+    nombre_responsable = Column(String(150))
+    correo_responsable = Column(String(150))
+    empresa_id = Column(Integer)
+    empresa_nombre = Column(String(150))
 
     actor_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     ip = Column(String(45))

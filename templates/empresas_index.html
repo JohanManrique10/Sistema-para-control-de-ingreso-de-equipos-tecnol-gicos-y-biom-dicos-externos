@@ -60,7 +60,15 @@
                     <form class="d-inline" method="POST"
                           action="{{ url_for('empresas_delete', empresa_id=e.id) }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button class="btn btn-sm btn-outline-danger" type="submit"
+
+                      <div class="d-flex align-items-center gap-2">
+                        <img id="emp-captcha-{{ e.id }}" alt="captcha" style="height:42px; border:1px solid #ddd;" />
+                        <input name="captcha" placeholder="Escribe captcha" required class="form-control form-control-sm" style="max-width:140px;">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('emp-captcha-{{ e.id }}').src='{{ url_for('captcha.image') }}?t='+Date.now();">Refrescar</button>
+                      </div>
+                      <script>document.getElementById('emp-captcha-{{ e.id }}').src = '{{ url_for('captcha.image') }}?t=' + Date.now();</script>
+
+                      <button class="btn btn-sm btn-outline-danger mt-1" type="submit"
                               onclick="return confirm('¿Eliminar empresa {{ e.nombre }}?');">
                         Eliminar
                       </button>

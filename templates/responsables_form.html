@@ -8,7 +8,7 @@
       <div class="card-body">
         <h3 class="mb-3">{{ 'Editar responsable' if is_edit else 'Nuevo responsable' }}</h3>
 
-        <form method="POST" novalidate>
+        <form method="POST" enctype="multipart/form-data" novalidate>
           {{ form.hidden_tag() }}
 
           <div class="row g-3">
@@ -36,6 +36,10 @@
 
           <div class="d-flex gap-2 mt-4">
             {{ form.submit(class="btn btn-primary") }}
+            <div>
+              <label class="form-label small mb-1">Foto (opcional)</label>
+              <input type="file" name="photo" accept="image/*" class="form-control form-control-sm">
+            </div>
             <a href="{{ url_for('responsables_index') }}" class="btn btn-outline-secondary">Cancelar</a>
           </div>
         </form>

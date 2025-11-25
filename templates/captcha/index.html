@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Captcha de imagen</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='captcha/style.css') }}">
+  </head>
+  <body>
+    <div class="captcha-wrap">
+      <h3>Verificación</h3>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <ul class="flashes">
+            {% for category, msg in messages %}
+              <li class="flash {{ category }}">{{ msg }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endwith %}
+
+      <form method="post">
+        <div class="captcha-image">
+          <img src="{{ url_for('captcha.image') }}?t={{ ts }}" alt="captcha image">
+        </div>
+        <div class="captcha-controls">
+          <label for="captcha">Escribe los caracteres que ves:</label>
+          <input id="captcha" name="captcha" autocomplete="off" required>
+        </div>
+        <div class="captcha-actions">
+          <button type="submit">Enviar</button>
+          <button type="button" onclick="document.querySelector('img').src='{{ url_for('captcha.image') }}?t=' + Date.now();">Refrescar</button>
+        </div>
+      </form>
+    </div>
+  </body>
+</html>

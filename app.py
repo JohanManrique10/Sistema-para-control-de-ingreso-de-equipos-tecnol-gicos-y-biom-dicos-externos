@@ -539,6 +539,14 @@ def users_create():
             db.add(u)
             db.commit()
 
+            # Guardar foto si viene
+            photo = request.files.get('photo')
+            if photo and photo.filename:
+                try:
+                    save_uploaded_image(photo, f'user_{u.id}.png')
+                except Exception:
+                    pass
+
             # Auditoría
             log_audit(
                 db,
@@ -659,6 +667,14 @@ def users_edit(user_id: int):
                         level="warning",
                     )
 
+            # Guardar foto si viene
+            photo = request.files.get('photo')
+            if photo and photo.filename:
+                try:
+                    save_uploaded_image(photo, f'user_{u.id}.png')
+                except Exception:
+                    pass
+
             flash("Usuario actualizado.", "success")
             return redirect(url_for("users_index"))
         elif request.method == "GET":
@@ -677,6 +693,12 @@ def users_edit(user_id: int):
 def users_delete(user_id: int):
     if user_id == current_user.id:
         flash("No puedes eliminar tu propio usuario mientras estás logueado.", "warning")
+        return redirect(url_for("users_index"))
+    # Validar captcha de imagen (opcional)
+    entered = (request.form.get("captcha") or "").strip()
+    expected = session.get("captcha_text")
+    if not expected or entered.lower() != expected.lower():
+        flash("Captcha incorrecto. No se pudo eliminar el usuario.", "warning")
         return redirect(url_for("users_index"))
 
     db = SessionLocal()
@@ -802,6 +824,45 @@ def _client_ip(req) -> str | None:
 # --- Auditoría de acciones para usuarios, en esta User-Agent es para obtener el navegador ---
 def _ua(req) -> str | None:
     return (req.headers.get("User-Agent") or "")[:255]
+
+
+def _ensure_uploads_dir():
+    upload_dir = os.path.join(app.static_folder, "uploads")
+    try:
+        os.makedirs(upload_dir, exist_ok=True)
+    except Exception:
+        pass
+    return upload_dir
+
+
+def save_uploaded_image(file, dest_filename: str):
+    """Valida y guarda una imagen en `static/uploads/` con el nombre `dest_filename`.
+    Convierte a PNG para normalizar.
+    """
+    if not file:
+        return False
+    filename = dest_filename
+    upload_dir = _ensure_uploads_dir()
+    dest_path = os.path.join(upload_dir, filename)
+    try:
+        from PIL import Image
+        img = Image.open(file.stream)
+        img = img.convert("RGBA")
+        img.save(dest_path, format="PNG")
+        return True
+    except Exception:
+        return False
+
+
+@app.context_processor
+def inject_photo_url_helpers():
+    def photo_url(kind: str, obj_id: int):
+        path = f"uploads/{kind}_{obj_id}.png"
+        full = os.path.join(app.static_folder, path)
+        if os.path.exists(full):
+            return url_for('static', filename=path)
+        return url_for('static', filename='img/logo.png')
+    return dict(photo_url=photo_url)
 
 # --- Auditoría de acciones para usuarios, en esta función se registra la auditoría ---
 def log_audit(db, user_id: int, action: str, detail: dict | None = None, actor_user_id: int | None = None):
@@ -1078,6 +1139,39 @@ def log_empresa_audit(db, *, empresa_id: int, action: str, detail: dict | None =
     return entry
 
 
+def log_responsable_audit(db, *, responsable_id: int, action: str, detail: dict | None = None, actor_user_id: int | None = None):
+    from models import ResponsableAudit
+    entry = ResponsableAudit(
+        responsable_id=responsable_id,
+        actor_user_id=actor_user_id,
+        action=action,
+        detail=json.dumps(detail, ensure_ascii=False) if detail else None,
+        ip=_client_ip(request),
+        user_agent=_ua(request),
+    )
+    db.add(entry)
+    db.commit()
+    return entry
+
+
+def record_responsable_deletion(db, r: 'ResponsableEntrega', actor_id: int | None):
+    from models import ResponsableDeletion
+    row = ResponsableDeletion(
+        responsable_id=r.id,
+        id_responsable=r.id_responsable,
+        nombre_responsable=r.nombre_responsable,
+        correo_responsable=r.correo_responsable,
+        empresa_id=r.empresa_id,
+        empresa_nombre=r.empresa.nombre if r.empresa else None,
+        actor_user_id=actor_id,
+        ip=_client_ip(request),
+        user_agent=_ua(request),
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
 def record_empresa_deletion(db, emp: 'EmpresaExterna', actor_id: int | None):
     from models import EmpresaDeletion
     row = EmpresaDeletion(
@@ -1189,6 +1283,25 @@ def empresas_create():
                 # No queremos bloquear el flujo si la auditoría falla
                 pass
 
+            # Notificar a administradores sobre la nueva empresa
+            try:
+                notify_admins(
+                    db,
+                    title=f"Empresa creada: {emp.nombre}",
+                    body=f"Identificación: {emp.identificacion} - Creada por {current_user.username}",
+                    level="success",
+                )
+            except Exception:
+                pass
+
+            # Guardar logo/foto si viene
+            photo = request.files.get('photo')
+            if photo and photo.filename:
+                try:
+                    save_uploaded_image(photo, f'empresa_{emp.id}.png')
+                except Exception:
+                    pass
+
             flash("Empresa creada correctamente.", "success")
             return redirect(url_for("empresas_index"))
         finally:
@@ -1250,6 +1363,24 @@ def empresas_edit(empresa_id: int):
                         detail={"id": emp.id, "changes": changes, "reason": "admin_edit_empresa"},
                         actor_user_id=current_user.id if current_user and getattr(current_user, 'id', None) else None,
                     )
+                except Exception:
+                    pass
+                # Notificar a administradores sobre la actualización
+                try:
+                    notify_admins(
+                        db,
+                        title=f"Empresa actualizada: {emp.nombre}",
+                        body=f"Cambios: {', '.join(changes.keys())} - Actor: {current_user.username}",
+                        level="info",
+                    )
+                except Exception:
+                    pass
+
+            # Guardar logo/foto si viene
+            photo = request.files.get('photo')
+            if photo and photo.filename:
+                try:
+                    save_uploaded_image(photo, f'empresa_{emp.id}.png')
                 except Exception:
                     pass
 
@@ -1332,6 +1463,25 @@ def responsables_create():
             db.add(resp)
             db.commit()
 
+            # Notificar a administradores sobre nuevo responsable
+            try:
+                notify_admins(
+                    db,
+                    title=f"Responsable creado: {resp.nombre_responsable}",
+                    body=f"ID: {resp.id_responsable} - Empresa: {resp.empresa.nombre if resp.empresa else resp.empresa_id}",
+                    level="success",
+                )
+            except Exception:
+                pass
+
+            # Guardar foto si viene
+            photo = request.files.get('photo')
+            if photo and photo.filename:
+                try:
+                    save_uploaded_image(photo, f'resp_{resp.id}.png')
+                except Exception:
+                    pass
+
             flash("Responsable creado correctamente.", "success")
             return redirect(url_for("responsables_index"))
 
@@ -1394,6 +1544,24 @@ def responsables_edit(resp_id: int):
             db.add(resp)
             db.commit()
 
+            # Notificar a administradores sobre actualización del responsable
+            try:
+                notify_admins(
+                    db,
+                    title=f"Responsable actualizado: {resp.nombre_responsable}",
+                    body=f"ID: {resp.id_responsable} - Empresa: {resp.empresa.nombre if resp.empresa else resp.empresa_id}",
+                    level="info",
+                )
+            except Exception:
+                pass
+
+            # Guardar foto si viene
+            photo = request.files.get('photo')
+            if photo and photo.filename:
+                try:
+                    save_uploaded_image(photo, f'resp_{resp.id}.png')
+                except Exception:
+                    pass
             flash("Responsable actualizado.", "success")
             return redirect(url_for("responsables_index"))
 
@@ -1411,34 +1579,40 @@ def empresas_delete(empresa_id: int):
         emp = db.get(EmpresaExterna, empresa_id)
         if not emp:
             raise NotFound()
-
         # ¿Hay equipos usando esta empresa?
         has_equipos = db.query(Equipo).filter(Equipo.empresa_id == emp.id).first() is not None
         if has_equipos:
             flash("No puedes eliminar la empresa porque tiene equipos asociados.", "warning")
             return redirect(url_for("empresas_index"))
 
+        # Validar captcha de imagen
+        entered = (request.form.get("captcha") or "").strip()
+        expected = session.get("captcha_text")
+        if not expected or entered.lower() != expected.lower():
+            flash("Captcha incorrecto. No se pudo eliminar la empresa.", "warning")
+            return redirect(url_for("empresas_index"))
+
         # Si no hay equipos, se puede eliminar.
-            # Guardar snapshot en tabla de eliminados y auditoría
-            try:
-                record_empresa_deletion(db, emp, actor_id=current_user.id)
-            except Exception:
-                pass
+        # Guardar snapshot en tabla de eliminados y auditoría
+        try:
+            record_empresa_deletion(db, emp, actor_id=current_user.id)
+        except Exception:
+            pass
 
-            try:
-                log_empresa_audit(
-                    db,
-                    empresa_id=emp.id,
-                    action="empresa_delete",
-                    detail={"deleted": {"id": emp.id, "identificacion": emp.identificacion, "nombre": emp.nombre}},
-                    actor_user_id=current_user.id if current_user and getattr(current_user, 'id', None) else None,
-                )
-            except Exception:
-                pass
+        try:
+            log_empresa_audit(
+                db,
+                empresa_id=emp.id,
+                action="empresa_delete",
+                detail={"deleted": {"id": emp.id, "identificacion": emp.identificacion, "nombre": emp.nombre}},
+                actor_user_id=current_user.id if current_user and getattr(current_user, 'id', None) else None,
+            )
+        except Exception:
+            pass
 
-            db.delete(emp)
-            db.commit()
-            flash("Empresa eliminada correctamente.", "info")
+        db.delete(emp)
+        db.commit()
+        flash("Empresa eliminada correctamente.", "info")
         return redirect(url_for("empresas_index"))
     finally:
         db.close()
@@ -1453,15 +1627,51 @@ def responsables_delete(resp_id: int):
         resp = db.get(ResponsableEntrega, resp_id)
         if not resp:
             raise NotFound()
-
         # ¿Hay equipos que dependan de este responsable?
         has_equipos = db.query(Equipo).filter(Equipo.responsable_id == resp.id).first() is not None
         if has_equipos:
             flash("No puedes eliminar el responsable porque tiene equipos asociados.", "warning")
             return redirect(url_for("responsables_index"))
 
+        # Validar captcha de imagen
+        entered = (request.form.get("captcha") or "").strip()
+        expected = session.get("captcha_text")
+        if not expected or entered.lower() != expected.lower():
+            flash("Captcha incorrecto. No se pudo eliminar el responsable.", "warning")
+            return redirect(url_for("responsables_index"))
+
+        # Guardar snapshot en tabla de eliminados para no repudio
+        try:
+            record_responsable_deletion(db, resp, actor_id=current_user.id)
+        except Exception:
+            pass
+
+        # Auditoría de eliminación
+        try:
+            log_responsable_audit(
+                db,
+                responsable_id=resp.id,
+                action="responsable_delete",
+                detail={"deleted": {"id": resp.id, "id_responsable": resp.id_responsable, "nombre": resp.nombre_responsable}},
+                actor_user_id=current_user.id if current_user and getattr(current_user, 'id', None) else None,
+            )
+        except Exception:
+            pass
+
         db.delete(resp)
         db.commit()
+
+        # Notificar a administradores
+        try:
+            notify_admins(
+                db,
+                title=f"Responsable eliminado: {resp.nombre_responsable}",
+                body=f"ID: {resp.id_responsable} - Actor: {current_user.username}",
+                level="warning",
+            )
+        except Exception:
+            pass
+
         flash("Responsable eliminado correctamente.", "info")
         return redirect(url_for("responsables_index"))
     finally:
@@ -2602,4 +2812,12 @@ def _export_equipos_pdf(equipos, filtros: dict):
 
 
 if __name__ == "__main__":
+    # Registrar blueprint del captcha (si el módulo existe)
+    try:
+        from captcha_app import captcha_bp
+        app.register_blueprint(captcha_bp, url_prefix="/captcha")
+    except Exception:
+        # Si algo falla al importar el blueprint, seguimos sin bloquear el arranque
+        pass
+
     app.run(debug=True, host="0.0.0.0", port=8095)

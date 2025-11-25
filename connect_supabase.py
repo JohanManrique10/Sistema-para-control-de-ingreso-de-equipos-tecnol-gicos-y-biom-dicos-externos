@@ -10,7 +10,10 @@ try:
     with psycopg.connect(dsn, sslmode="require") as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT current_database(), current_user, NOW();")
-            print("✅ Conectado:", cur.fetchone())
-    print("🔒 Conexión cerrada correctamente.")
+            print(" Conectado:", cur.fetchone())
+    print(" Conexión cerrada correctamente.")
 except Exception as e:
-    print("❌ Error:", e)
+    print(" Error:", e)
+
+
+
