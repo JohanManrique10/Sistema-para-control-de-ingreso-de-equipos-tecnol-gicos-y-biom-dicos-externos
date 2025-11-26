@@ -30,7 +30,14 @@ def index():
 def image():
     # Genera texto y lo guarda en session
     text = _random_text(5)
-    session["captcha_text"] = text
+    # Soporta clave por tipo/obj para permitir múltiples captchas simultáneas
+    kind = (request.args.get("kind") or "").strip()
+    obj_id = (request.args.get("obj_id") or "").strip()
+    if kind and obj_id:
+        key = f"captcha_text_{kind}_{obj_id}"
+    else:
+        key = "captcha_text"
+    session[key] = text
 
     width, height = 160, 60
     img = Image.new("RGB", (width, height), (255, 255, 255))

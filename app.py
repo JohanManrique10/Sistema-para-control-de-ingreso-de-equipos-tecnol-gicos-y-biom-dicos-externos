@@ -696,7 +696,8 @@ def users_delete(user_id: int):
         return redirect(url_for("users_index"))
     # Validar captcha de imagen (opcional)
     entered = (request.form.get("captcha") or "").strip()
-    expected = session.get("captcha_text")
+    # Buscar captcha específico para este usuario (fallback a la clave genérica)
+    expected = session.get(f"captcha_text_user_{user_id}") or session.get("captcha_text")
     if not expected or entered.lower() != expected.lower():
         flash("Captcha incorrecto. No se pudo eliminar el usuario.", "warning")
         return redirect(url_for("users_index"))
@@ -1587,7 +1588,7 @@ def empresas_delete(empresa_id: int):
 
         # Validar captcha de imagen
         entered = (request.form.get("captcha") or "").strip()
-        expected = session.get("captcha_text")
+        expected = session.get(f"captcha_text_empresa_{empresa_id}") or session.get("captcha_text")
         if not expected or entered.lower() != expected.lower():
             flash("Captcha incorrecto. No se pudo eliminar la empresa.", "warning")
             return redirect(url_for("empresas_index"))
@@ -1635,7 +1636,7 @@ def responsables_delete(resp_id: int):
 
         # Validar captcha de imagen
         entered = (request.form.get("captcha") or "").strip()
-        expected = session.get("captcha_text")
+        expected = session.get(f"captcha_text_responsable_{resp_id}") or session.get("captcha_text")
         if not expected or entered.lower() != expected.lower():
             flash("Captcha incorrecto. No se pudo eliminar el responsable.", "warning")
             return redirect(url_for("responsables_index"))
@@ -2474,6 +2475,83 @@ def equipos_eliminados():
 
         return render_template(
             "equipos_deleted.html",
+            rows=rows, q=q_text, page=page, size=size, total=total
+        )
+    finally:
+        db.close()
+
+
+@app.route("/admin/empresas/eliminadas")
+@login_required
+@admin_required
+def empresas_eliminadas():
+    db = SessionLocal()
+    try:
+        q_text = (request.args.get("q") or "").strip().lower()
+        page = max(1, int(request.args.get("page", 1)))
+        size = min(100, max(10, int(request.args.get("size", 20))))
+
+        Actor = aliased(models.User)
+
+        qry = (db.query(models.EmpresaDeletion)
+               .outerjoin(Actor, models.EmpresaDeletion.actor)
+               .options(joinedload(models.EmpresaDeletion.actor))
+               .order_by(models.EmpresaDeletion.id.desc()))
+
+        if q_text:
+            like = f"%{q_text}%"
+            qry = qry.filter(or_(
+                models.EmpresaDeletion.identificacion.ilike(like),
+                models.EmpresaDeletion.nombre.ilike(like),
+                models.EmpresaDeletion.ip.ilike(like),
+                models.EmpresaDeletion.user_agent.ilike(like),
+                Actor.username.ilike(like),
+            ))
+
+        total = qry.count()
+        rows = qry.offset((page-1)*size).limit(size).all()
+
+        return render_template(
+            "empresas_deleted.html",
+            rows=rows, q=q_text, page=page, size=size, total=total
+        )
+    finally:
+        db.close()
+
+
+@app.route("/admin/responsables/eliminados")
+@login_required
+@admin_required
+def responsables_eliminados():
+    db = SessionLocal()
+    try:
+        q_text = (request.args.get("q") or "").strip().lower()
+        page = max(1, int(request.args.get("page", 1)))
+        size = min(100, max(10, int(request.args.get("size", 20))))
+
+        Actor = aliased(models.User)
+
+        qry = (db.query(models.ResponsableDeletion)
+               .outerjoin(Actor, models.ResponsableDeletion.actor)
+               .options(joinedload(models.ResponsableDeletion.actor))
+               .order_by(models.ResponsableDeletion.id.desc()))
+
+        if q_text:
+            like = f"%{q_text}%"
+            qry = qry.filter(or_(
+                models.ResponsableDeletion.id_responsable.ilike(like),
+                models.ResponsableDeletion.nombre_responsable.ilike(like),
+                models.ResponsableDeletion.correo_responsable.ilike(like),
+                models.ResponsableDeletion.empresa_nombre.ilike(like),
+                models.ResponsableDeletion.ip.ilike(like),
+                Actor.username.ilike(like),
+            ))
+
+        total = qry.count()
+        rows = qry.offset((page-1)*size).limit(size).all()
+
+        return render_template(
+            "responsables_deleted.html",
             rows=rows, q=q_text, page=page, size=size, total=total
         )
     finally:

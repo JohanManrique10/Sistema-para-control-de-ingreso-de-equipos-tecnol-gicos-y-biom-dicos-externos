@@ -198,6 +198,24 @@
                 Responsables de entrega
               </a>
             </li>
+
+            {# Enlaces al histórico / eliminados (solo admin) #}
+            {% if current_user.role == 'admin' %}
+              <li><hr class="dropdown-divider"></li>
+              <li class="dropdown-header small text-muted">Histórico</li>
+              <li>
+                <a class="dropdown-item {% if request.endpoint == 'empresas_eliminadas' %}active{% endif %}"
+                   href="{{ url_for('empresas_eliminadas') }}">
+                  Empresas eliminadas
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item {% if request.endpoint == 'responsables_eliminados' %}active{% endif %}"
+                   href="{{ url_for('responsables_eliminados') }}">
+                  Responsables eliminados
+                </a>
+              </li>
+            {% endif %}
           </ul>
         </li>
 
