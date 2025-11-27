@@ -296,7 +296,7 @@ class Equipo(Base):
     modelo: Mapped[str | None] = mapped_column(String(100))
     serial: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
 
-    # 🔴 AHORA: FKs en lugar de texto suelto
+    #  AHORA: FKs en lugar de texto suelto
     empresa_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("empresas_externas.id", ondelete="RESTRICT"),
